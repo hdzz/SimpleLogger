@@ -5,7 +5,6 @@
 *.sdf
 *.ilk
 *.pdb
-*.filters
 *.tlog
 *.log
 *.lastbuildstate
@@ -14,4 +13,4 @@
 *.tlog
 .vs/
 Debug/
-ASCII_art/Debug/
+SimpleLogger/Debug/
