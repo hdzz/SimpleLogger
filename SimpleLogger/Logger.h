@@ -34,9 +34,9 @@ private:
 	};
 
 	const char * _basic_format[3] = { 
-		"[debug][func:%s][line:%d] %s\n", 
-		"[info][func:%s][line:%d] %s\n" ,
-		"[error][func:%s][line:%d] %s\n" 
+		"[debug][func:%s][line:%d][%04d-%02d-%02d %02d:%02d:%02d.%03d.%03d] %s\n", 
+		"[info][func:%s][line:%d][%04d-%02d-%02d %02d:%02d:%02d.%03d.%03d] %s\n" ,
+		"[error][func:%s][line:%d][%04d-%02d-%02d %02d:%02d:%02d.%03d.%03d] %s\n" 
 	};
 
 	static FILE* log_file;
@@ -47,6 +47,9 @@ private:
 
 	LogLevel _logger_level;
 
+	time_t rawtime;
+
+	struct tm * timeinfo;
 };
 
 #ifndef __SIMPLE_LOGGER__

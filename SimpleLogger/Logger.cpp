@@ -3,6 +3,8 @@
 #include "Logger.h"
 #include <cstdarg>
 #include <cstdio>
+#include <ctime>
+#include "Clock.h"
 
 FILE * Logger::log_file = nullptr;
 
@@ -76,6 +78,9 @@ void Logger::operator() (const char *format, ...) noexcept
 	va_start(_curosr, format);
 	vsnprintf((char*)_input.data(), _input.size(), format, _curosr);
 	va_end(_curosr); 
-	fprintf(log_file, _basic_format[static_cast<int>(_logger_level)], _func.c_str(), _line, _input.c_str());
+	TimePoint time_point = TimePoint::builder().buildCurrentTimePoit();
+	fprintf(log_file, _basic_format[static_cast<int>(_logger_level)], _func.c_str(), _line, 
+		time_point.year, time_point.month, time_point.day, time_point.hour, time_point.minuite,
+		time_point.second, time_point.millisecond, time_point.microsecond, _input.c_str());
 	fflush(log_file);
 }

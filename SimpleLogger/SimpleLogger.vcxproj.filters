@@ -26,5 +26,8 @@
     <ClInclude Include="Logger.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="Clock.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
