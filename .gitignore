@@ -1,0 +1,17 @@
+*.html
+*.a
+*.o
+*.obj
+*.sdf
+*.ilk
+*.pdb
+*.filters
+*.tlog
+*.log
+*.lastbuildstate
+*.exe
+*.log
+*.tlog
+.vs/
+Debug/
+ASCII_art/Debug/
