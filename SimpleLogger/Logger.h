@@ -2,6 +2,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <atomic>
+
 //single thread only!
 class Logger final
 {
@@ -41,15 +43,33 @@ private:
 
 	static FILE* log_file;
 
-	std::string _func;
+	static thread_local std::string _func;
 
-	int _line;
+	static thread_local int _line;
 
-	LogLevel _logger_level;
+	static thread_local LogLevel _logger_level;
 
-	time_t rawtime;
+	class _InnerSpinLock
+	{
+	public:
+		void lock()
+		{
+			while (lck.test_and_set(std::memory_order_acquire))
+			{
+			}
+		}
 
-	struct tm * timeinfo;
+		void unlock()
+		{
+			lck.clear(std::memory_order_release);
+		}
+
+	private:
+		std::atomic_flag lck = ATOMIC_FLAG_INIT;
+	};
+
+	static _InnerSpinLock _spin_lock;
+
 };
 
 #ifndef __SIMPLE_LOGGER__

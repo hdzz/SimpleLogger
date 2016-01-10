@@ -7,12 +7,22 @@
 #include "Clock.h"
 
 FILE * Logger::log_file = nullptr;
+Logger::_InnerSpinLock Logger::_spin_lock;
+
+thread_local std::string Logger::_func = "";
+thread_local int Logger::_line = 0;
+thread_local Logger::LogLevel Logger::_logger_level = Logger::LogLevel::DEBUG;
 
 Logger::Logger()
 {
 	if (log_file == nullptr)
 	{
-		log_file = fopen("logout.log", "a");
+		errno_t err = fopen_s(&log_file, "logout.log", "a");
+		if (err != 0)
+		{
+			log_file = nullptr;		//fail to open log file!
+			//throw 
+		}
 	}
 }
 
@@ -79,8 +89,11 @@ void Logger::operator() (const char *format, ...) noexcept
 	vsnprintf((char*)_input.data(), _input.size(), format, _curosr);
 	va_end(_curosr); 
 	TimePoint time_point = TimePoint::builder().buildCurrentTimePoit();
-	fprintf(log_file, _basic_format[static_cast<int>(_logger_level)], _func.c_str(), _line, 
+	
+	_spin_lock.lock();		//lock the output operation, because all threads share only one output-stream
+	fprintf(log_file, _basic_format[static_cast<int>(_logger_level)], _func.c_str(), _line,
 		time_point.year, time_point.month, time_point.day, time_point.hour, time_point.minuite,
 		time_point.second, time_point.millisecond, time_point.microsecond, _input.c_str());
 	fflush(log_file);
+	_spin_lock.unlock();	//release lock
 }
