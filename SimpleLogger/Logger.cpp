@@ -4,14 +4,70 @@
 #include <cstdarg>
 #include <cstdio>
 #include <ctime>
-#include "Clock.h"
+#include "TimePoint.h"
 
 FILE * Logger::log_file = nullptr;
-Logger::_InnerSpinLock Logger::_spin_lock;
 
 thread_local std::string Logger::_func = "";
 thread_local int Logger::_line = 0;
 thread_local Logger::LogLevel Logger::_logger_level = Logger::LogLevel::DEBUG;
+thread_local bool Logger::_is_flush_now = false;
+
+Logger::_InnerSpinLock Logger::_spin_lock;
+const size_t Logger::pre_log_length = 100;
+Logger::LogBuffer Logger::_buffer(8192, 2);
+
+Logger::LogBuffer::LogBuffer(size_t size, size_t count) :
+	threshold_size(size), threshold_count(count)
+{
+	log_array = new LogRecord[threshold_count];
+	buffer = new char[buffer_size = threshold_size << 1]{ '\0' };
+}
+
+Logger::LogBuffer::~LogBuffer()
+{
+	flush();
+	delete[]log_array;
+	delete[]buffer;
+}
+
+void Logger::LogBuffer::append(char * input, size_t lenght)
+{
+	log_array[current_count].record = input;
+	log_array[current_count++].length = lenght;
+	current_size += lenght;
+	if (current_count >= threshold_count || current_count >= threshold_size)
+	{
+		flush();
+	}
+}
+
+void Logger::LogBuffer::flush()
+{
+	if (1 + current_count + current_size > buffer_size)
+	{
+		delete[]buffer;
+		buffer = new char[buffer_size = current_count + current_size]{ '\0' };
+	}
+	char *curse = buffer;
+	for (size_t i = 0; i < current_count; ++i)
+	{
+		memcpy(curse, log_array[i].record, log_array[i].length + 1);
+		curse += log_array[i].length + 1;
+		*(curse - 1) = '\n';
+		log_array[i].clear();
+	}
+	*curse = '\0';
+	fprintf(log_file, "%s", buffer);
+	current_count = 0;
+	current_size = 0;
+}
+
+const char * Logger::_basic_format[3] = {
+	"[DEBUG][%s][func:%s][line:%d] ",
+	"[INFO][%s][func:%s][line:%d] " ,
+	"[ERROR][%s][func:%s][line:%d] "
+};
 
 Logger::Logger()
 {
@@ -31,42 +87,30 @@ Logger::~Logger()
 
 }
 
-void Logger::debug(const char *format, ...) noexcept
-{
-
-}
-
-Logger& Logger::debug(const char * func, int line) noexcept
+Logger& Logger::debug(bool is_flush_now, const char * func, int line) noexcept
 {
 	_func = func;
 	_line = line;
 	_logger_level = LogLevel::DEBUG;
+	_is_flush_now = is_flush_now;
 	return *this;
 }
 
-void Logger::info(const char *format, ...) noexcept
-{
-
-}
-
-Logger& Logger::info(const char * func, int line) noexcept
+Logger& Logger::info(bool is_flush_now, const char * func, int line) noexcept
 {
 	_func = func;
 	_line = line;
 	_logger_level = LogLevel::INFO;
+	_is_flush_now = is_flush_now;
 	return *this;
 }
 
-void Logger::error(const char *format, ...) noexcept
-{
-
-}
-
-Logger& Logger::error(const char * func, int line) noexcept
+Logger& Logger::error(bool is_flush_now, const char * func, int line) noexcept
 {
 	_func = func;
 	_line = line;
 	_logger_level = LogLevel::ERROR;
+	_is_flush_now = is_flush_now;
 	return *this;
 }
 
@@ -79,21 +123,30 @@ void Logger::operator() (const char *format, ...) noexcept
 	va_list _curosr;
 	va_start(_curosr, format);
 	int _length = strlen(format);
+
 	for (const char *p = format; (p = strstr(p, "%s")) != nullptr; ++p)
 	{
 		char * str = va_arg(_curosr, char*);
 		_length += strlen(str);
 	}
-	std::string _input(_length + 1, '\0');
+	char *log = new char[_length + pre_log_length]{ '\0' };
+
 	va_start(_curosr, format);
-	vsnprintf((char*)_input.data(), _input.size(), format, _curosr);
-	va_end(_curosr); 
-	TimePoint time_point = TimePoint::builder().buildCurrentTimePoit();
-	
-	_spin_lock.lock();		//lock the output operation, because all threads share only one output-stream
-	fprintf(log_file, _basic_format[static_cast<int>(_logger_level)], _func.c_str(), _line,
-		time_point.year, time_point.month, time_point.day, time_point.hour, time_point.minuite,
-		time_point.second, time_point.millisecond, time_point.microsecond, _input.c_str());
-	fflush(log_file);
-	_spin_lock.unlock();	//release lock
+	TimePoint time_point = TimePoint::getCurrentTimePoit();
+	size_t restart_index = snprintf(log, _length + pre_log_length, _basic_format[static_cast<int>(_logger_level)],
+		time_point.toString().c_str(), _func.c_str(), _line);
+	restart_index += vsnprintf(log + restart_index, _length + pre_log_length - restart_index, format, _curosr);
+	va_end(_curosr);
+
+	_spin_lock.lock();
+	if (_is_flush_now)
+	{
+		fprintf(log_file, "%s\n", log);
+		delete[]log;
+	}
+	else
+	{
+		_buffer.append(log, restart_index);
+	}
+	_spin_lock.unlock();
 }
