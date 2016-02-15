@@ -6,7 +6,7 @@ TimePoint TimePoint::getCurrentTimePoit()
 {
 	using namespace std::chrono;	//namespace only in this function
 	time_t timer = time(nullptr);
-	tm *timeinfo = timeinfo = localtime(&timer);
+	tm *timeinfo = localtime(&timer);
 	microseconds ms = duration_cast<microseconds>(system_clock::now().time_since_epoch());
 	long long count = ms.count();
 	short microsecond = count % 1000;

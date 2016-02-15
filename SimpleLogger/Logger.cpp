@@ -15,7 +15,7 @@ thread_local bool Logger::_is_flush_now = false;
 
 Logger::_InnerSpinLock Logger::_spin_lock;
 const size_t Logger::pre_log_length = 100;
-Logger::LogBuffer Logger::_buffer(8192, 2);
+Logger::LogBuffer Logger::_buffer(8192, 64);
 
 Logger::LogBuffer::LogBuffer(size_t size, size_t count) :
 	threshold_size(size), threshold_count(count)
@@ -69,11 +69,11 @@ const char * Logger::_basic_format[3] = {
 	"[ERROR][%s][func:%s][line:%d] "
 };
 
-Logger::Logger()
+Logger::Logger(const std::string file_name)
 {
 	if (log_file == nullptr)
 	{
-		errno_t err = fopen_s(&log_file, "logout.log", "a");
+		errno_t err = fopen_s(&log_file, file_name.c_str(), "a");
 		if (err != 0)
 		{
 			log_file = nullptr;		//fail to open log file!
@@ -124,11 +124,27 @@ void Logger::operator() (const char *format, ...) noexcept
 	va_start(_curosr, format);
 	int _length = strlen(format);
 
-	for (const char *p = format; (p = strstr(p, "%s")) != nullptr; ++p)
+	for (const char *p = format, *temp = nullptr; ; ++p)
 	{
-		char * str = va_arg(_curosr, char*);
-		_length += strlen(str);
+		if ((temp = strstr(p, "%s")) != nullptr)
+		{
+			char * str = va_arg(_curosr, char*);
+			_length += strlen(str);
+			p = temp + 1;
+		}
+		else if ((temp = strchr(p, '%')) != nullptr)
+		{
+			int number_int = va_arg(_curosr, int);
+			_length += 25;
+			p = temp;
+		}
+
+		if (temp == nullptr)
+		{
+			break;
+		}
 	}
+
 	char *log = new char[_length + pre_log_length]{ '\0' };
 
 	va_start(_curosr, format);

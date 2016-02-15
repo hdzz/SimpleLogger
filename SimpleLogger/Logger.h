@@ -8,7 +8,7 @@
 class Logger final
 {
 public:
-	Logger();
+	Logger(const std::string file_name);
 
 	~Logger();
 
