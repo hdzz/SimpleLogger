@@ -47,7 +47,7 @@ void Logger::LogBuffer::flush()
 	if (1 + current_count + current_size > buffer_size)
 	{
 		delete[]buffer;
-		buffer = new char[buffer_size = current_count + current_size]{ '\0' };
+		buffer = new char[buffer_size = current_count + current_size + 1]{ '\0' };
 	}
 	char *curse = buffer;
 	for (size_t i = 0; i < current_count; ++i)
