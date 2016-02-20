@@ -2,6 +2,9 @@
 #include <string>
 #include <atomic>
 
+#ifndef __SIMPLE_LOGGER__H_
+#define __SIMPLE_LOGGER__H_
+
 /*
 * simple logger, multithread supported
 */
@@ -9,6 +12,8 @@ class Logger final
 {
 public:
 	Logger(const std::string file_name);
+
+	Logger(decltype(stdout) out);
 
 	~Logger();
 
@@ -31,8 +36,8 @@ private:
 
 	static const char * _basic_format[3];
 
-	static FILE* log_file;
-	
+	FILE* _log_file = nullptr;
+
 	static const size_t	 pre_log_length;	//fix length of log header, which describes time ,functon and line of file
 
 	static thread_local std::string _func;
@@ -74,7 +79,7 @@ private:
 	class LogBuffer final
 	{
 	public:
-		LogBuffer(size_t size = 8192, size_t count = 128);
+		LogBuffer(Logger &const logger, size_t size = 8192, size_t count = 128);
 
 		virtual ~LogBuffer();
 
@@ -117,9 +122,13 @@ private:
 
 		char *buffer;
 
+		Logger &outer;
+
 	};
 
-	static LogBuffer _buffer;
+	friend class LogBuffer;
+
+	LogBuffer _buffer;
 
 };
 
@@ -130,4 +139,6 @@ private:
 #define infoFlush info(true, __func__, __LINE__)
 #define errorNonFlush error(false, __func__, __LINE__)
 #define errorFlush error(true, __func__, __LINE__)
+#endif
+
 #endif

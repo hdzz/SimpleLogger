@@ -6,8 +6,6 @@
 #include <ctime>
 #include "TimePoint.h"
 
-FILE * Logger::log_file = nullptr;
-
 thread_local std::string Logger::_func = "";
 thread_local int Logger::_line = 0;
 thread_local Logger::LogLevel Logger::_logger_level = Logger::LogLevel::DEBUG;
@@ -15,10 +13,9 @@ thread_local bool Logger::_is_flush_now = false;
 
 Logger::_InnerSpinLock Logger::_spin_lock;
 const size_t Logger::pre_log_length = 100;
-Logger::LogBuffer Logger::_buffer(8192, 64);
 
-Logger::LogBuffer::LogBuffer(size_t size, size_t count) :
-	threshold_size(size), threshold_count(count)
+Logger::LogBuffer::LogBuffer(Logger &const logger, size_t size, size_t count) :
+	threshold_size(size), threshold_count(count), outer(logger)
 {
 	log_array = new LogRecord[threshold_count];
 	buffer = new char[buffer_size = threshold_size << 1]{ '\0' };
@@ -58,7 +55,9 @@ void Logger::LogBuffer::flush()
 		log_array[i].clear();
 	}
 	*curse = '\0';
-	fprintf(log_file, "%s", buffer);
+
+	fprintf(outer._log_file, "%s", buffer);
+	
 	current_count = 0;
 	current_size = 0;
 }
@@ -69,17 +68,17 @@ const char * Logger::_basic_format[3] = {
 	"[ERROR][%s][func:%s][line:%d] "
 };
 
-Logger::Logger(const std::string file_name)
+Logger::Logger(const std::string file_name) : _buffer(*this, 8192, 64)
 {
-	if (log_file == nullptr)
+	errno_t err = fopen_s(&_log_file, file_name.c_str(), "a");
+	if (err != 0)
 	{
-		errno_t err = fopen_s(&log_file, file_name.c_str(), "a");
-		if (err != 0)
-		{
-			log_file = nullptr;		//fail to open log file!
-			//throw 
-		}
+		//fail to open log file! throw exception
 	}
+}
+
+Logger::Logger(decltype(stdout) out) : _log_file(out), _buffer(*this, 8192, 64)
+{
 }
 
 Logger::~Logger()
@@ -116,7 +115,7 @@ Logger& Logger::error(bool is_flush_now, const char * func, int line) noexcept
 
 void Logger::operator() (const char *format, ...) noexcept
 {
-	if (log_file == nullptr)
+	if (_log_file == nullptr)
 	{
 		return;
 	}
@@ -157,7 +156,7 @@ void Logger::operator() (const char *format, ...) noexcept
 	_spin_lock.lock();
 	if (_is_flush_now)
 	{
-		fprintf(log_file, "%s\n", log);
+		fprintf(_log_file, "%s\n", log);
 		delete[]log;
 	}
 	else

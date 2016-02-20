@@ -2,6 +2,7 @@
 #include "TimePoint.h"
 #include <thread>
 #include <sstream>
+#include <iostream>
 
 using namespace std;
 
@@ -19,15 +20,18 @@ void thread_func(Logger &logger, string id)
 
 int main()
 {
-	Logger logger("test.log");
-	
+	//Logger logger("test.log");
+	Logger logger(stdout);
+
+	//cout << typeid(decltype(stdout)).name() << endl;
+	//cout << typeid(FILE*).name() << endl;
 	thread test0(thread_func, std::ref(logger), "00");
 	thread test1(thread_func, std::ref(logger), "01");
 	thread test2(thread_func, std::ref(logger), "02");
-
 	test0.join();
 	test1.join();
 	test2.join();
+
 	//printf("%s\n", TimePoint::getCurrentTimePoit().toString().c_str());
 	//for (int i = 0; i < 10; ++i)
 	//{
