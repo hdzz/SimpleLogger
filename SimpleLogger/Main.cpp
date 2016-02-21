@@ -34,16 +34,20 @@ int main()
 {
 	Logger logger_logout("logout.log", Logger::LogLevel::INFO);
 	Logger logger("test.log", Logger::LogLevel::DEBUG);
+	Logger logger1("test.log", Logger::LogLevel::DEBUG);
+	Logger logger2("test.log", Logger::LogLevel::DEBUG);
 	Logger logger_stdout(Logger::LogLevel::DEBUG);
 
-	//cout << typeid(decltype(stdout)).name() << endl;
-	//cout << typeid(FILE*).name() << endl;
 	thread test0(thread_func_xyb, std::ref(logger_logout), "00");
 	thread test1(thread_func_love, std::ref(logger_logout), "01");
 	thread test2(thread_func_Charlotte, std::ref(logger), "02");
+	thread test3(thread_func_Charlotte, std::ref(logger1), "03");
+	thread test4(thread_func_Charlotte, std::ref(logger2), "04");
 	test0.join();
 	test1.join();
 	test2.join();
+	test3.join();
+	test4.join();
 
 	return 0;
 }

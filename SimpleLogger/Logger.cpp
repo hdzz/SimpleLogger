@@ -10,7 +10,7 @@ thread_local std::string Logger::_func = "";
 thread_local int Logger::_line = 0;
 thread_local Logger::LogLevel Logger::_current_log_level = Logger::LogLevel::DEBUG;
 
-std::map<std::string, std::pair<Logger::_InnerSpinLock *, std::atomic_int *>> Logger::_log_file_lock;
+std::map<std::string, std::tuple<FILE*, Logger::_InnerSpinLock *, std::atomic_int *>> Logger::_log_file_lock;
 const size_t Logger::_pre_log_length = 100;
 
 Logger::LogBuffer::LogBuffer(Logger &const logger, size_t size, size_t count) :
@@ -79,31 +79,33 @@ Logger::Logger(const std::string file_name, LogLevel base_level) : _buffer(*this
 		}
 		else
 		{
-			_log_file_lock[_log_file_name] = std::make_pair<_InnerSpinLock *, std::atomic_int *>(new _InnerSpinLock(), new std::atomic_int(1));
+			_log_file_lock[_log_file_name] = std::make_tuple(_log_file, new _InnerSpinLock(), new std::atomic_int(1));
 		}
 	}
 	else
 	{
-		_log_file_lock[_log_file_name].second->operator++(1);
+		//<FILE*, _InnerSpinLock *, std::atomic_int *>
+		std::get<std::atomic_int *>(_log_file_lock[_log_file_name])->operator++(1);
+		_log_file = std::get<FILE *>(_log_file_lock[_log_file_name]);
 	}
 }
 
 Logger::Logger(LogLevel base_level) : _log_file(stdout), _buffer(*this, 8192, 64), _base_log_level(base_level), _log_file_name("stdout")
 {
-	_log_file_lock[_log_file_name] = std::make_pair<_InnerSpinLock *, std::atomic_int *>(new _InnerSpinLock(), new std::atomic_int(1));
+	_log_file_lock[_log_file_name] = std::make_tuple(stdout, new _InnerSpinLock(), new std::atomic_int(1));
 }
 
 Logger::~Logger()
 {
-	_log_file_lock[_log_file_name].second->operator--(1);
-	if (_log_file_lock[_log_file_name].second == 0)
+	std::get<std::atomic_int *>(_log_file_lock[_log_file_name])->operator--(1);
+	if (std::get<std::atomic_int *>(_log_file_lock[_log_file_name]) == 0)
 	{
 		if (_log_file_name != "stdout")
 		{
 			fclose(_log_file);
 		}
-		delete _log_file_lock[_log_file_name].first;
-		delete _log_file_lock[_log_file_name].second;
+		delete std::get<std::atomic_int *>(_log_file_lock[_log_file_name]);
+		delete std::get<_InnerSpinLock *>(_log_file_lock[_log_file_name]);
 		_log_file_lock.erase(_log_file_name);
 	}
 }
@@ -172,7 +174,7 @@ void Logger::operator() (bool is_flush_now, const char *format, ...) noexcept
 	restart_index += vsnprintf(log + restart_index, _length + _pre_log_length - restart_index, format, _curosr);
 	va_end(_curosr);
 
-	_log_file_lock[_log_file_name].first->lock();
+	std::get<_InnerSpinLock *>(_log_file_lock[_log_file_name])->lock();
 	if (is_flush_now)
 	{
 		fprintf(_log_file, "%s\n", log);
@@ -182,5 +184,5 @@ void Logger::operator() (bool is_flush_now, const char *format, ...) noexcept
 	{
 		_buffer.append(log, restart_index);
 	}
-	_log_file_lock[_log_file_name].first->unlock();
+	std::get<_InnerSpinLock *>(_log_file_lock[_log_file_name])->unlock();
 }

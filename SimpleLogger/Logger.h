@@ -93,7 +93,7 @@ private:
 	LogLevel _base_log_level = LogLevel::DEBUG;
 
 	//every log flie holds a spin lock. count times of open every log file
-	static std::map<std::string, std::pair<_InnerSpinLock *, std::atomic_int *>> _log_file_lock;
+	static std::map<std::string, std::tuple<FILE*, _InnerSpinLock *, std::atomic_int *>> _log_file_lock;
 
 	/*
 	* LogBuffer store log, when reach max couunt or max size
