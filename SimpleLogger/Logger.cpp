@@ -8,11 +8,10 @@
 
 thread_local std::string Logger::_func = "";
 thread_local int Logger::_line = 0;
-thread_local Logger::LogLevel Logger::_logger_level = Logger::LogLevel::DEBUG;
-thread_local bool Logger::_is_flush_now = false;
+thread_local Logger::LogLevel Logger::_current_log_level = Logger::LogLevel::DEBUG;
 
-Logger::_InnerSpinLock Logger::_spin_lock;
-const size_t Logger::pre_log_length = 100;
+std::map<std::string, std::pair<Logger::_InnerSpinLock *, std::atomic_int *>> Logger::_log_file_lock;
+const size_t Logger::_pre_log_length = 100;
 
 Logger::LogBuffer::LogBuffer(Logger &const logger, size_t size, size_t count) :
 	threshold_size(size), threshold_count(count), outer(logger)
@@ -57,7 +56,7 @@ void Logger::LogBuffer::flush()
 	*curse = '\0';
 
 	fprintf(outer._log_file, "%s", buffer);
-	
+
 	current_count = 0;
 	current_size = 0;
 }
@@ -68,54 +67,74 @@ const char * Logger::_basic_format[3] = {
 	"[ERROR][%s][func:%s][line:%d] "
 };
 
-Logger::Logger(const std::string file_name) : _buffer(*this, 8192, 64)
+//every log file can open only once
+Logger::Logger(const std::string file_name, LogLevel base_level) : _buffer(*this, 8192, 64), _base_log_level(base_level), _log_file_name(file_name)
 {
-	errno_t err = fopen_s(&_log_file, file_name.c_str(), "a");
-	if (err != 0)
+	if (_log_file_lock.find(_log_file_name) == _log_file_lock.end())
 	{
-		//fail to open log file! throw exception
+		_log_file = fopen(_log_file_name.c_str(), "a");
+		if (_log_file == nullptr)
+		{
+			//open file failed! throw exception
+		}
+		else
+		{
+			_log_file_lock[_log_file_name] = std::make_pair<_InnerSpinLock *, std::atomic_int *>(new _InnerSpinLock(), new std::atomic_int(1));
+		}
+	}
+	else
+	{
+		_log_file_lock[_log_file_name].second->operator++(1);
 	}
 }
 
-Logger::Logger(decltype(stdout) out) : _log_file(out), _buffer(*this, 8192, 64)
+Logger::Logger(LogLevel base_level) : _log_file(stdout), _buffer(*this, 8192, 64), _base_log_level(base_level), _log_file_name("stdout")
 {
+	_log_file_lock[_log_file_name] = std::make_pair<_InnerSpinLock *, std::atomic_int *>(new _InnerSpinLock(), new std::atomic_int(1));
 }
 
 Logger::~Logger()
 {
-
+	_log_file_lock[_log_file_name].second->operator--(1);
+	if (_log_file_lock[_log_file_name].second == 0)
+	{
+		if (_log_file_name != "stdout")
+		{
+			fclose(_log_file);
+		}
+		delete _log_file_lock[_log_file_name].first;
+		delete _log_file_lock[_log_file_name].second;
+		_log_file_lock.erase(_log_file_name);
+	}
 }
 
-Logger& Logger::debug(bool is_flush_now, const char * func, int line) noexcept
+Logger& Logger::debug(const char * func, int line) noexcept
 {
 	_func = func;
 	_line = line;
-	_logger_level = LogLevel::DEBUG;
-	_is_flush_now = is_flush_now;
+	_current_log_level = LogLevel::DEBUG;
 	return *this;
 }
 
-Logger& Logger::info(bool is_flush_now, const char * func, int line) noexcept
+Logger& Logger::info(const char * func, int line) noexcept
 {
 	_func = func;
 	_line = line;
-	_logger_level = LogLevel::INFO;
-	_is_flush_now = is_flush_now;
+	_current_log_level = LogLevel::INFO;
 	return *this;
 }
 
-Logger& Logger::error(bool is_flush_now, const char * func, int line) noexcept
+Logger& Logger::error(const char * func, int line) noexcept
 {
 	_func = func;
 	_line = line;
-	_logger_level = LogLevel::ERROR;
-	_is_flush_now = is_flush_now;
+	_current_log_level = LogLevel::ERROR;
 	return *this;
 }
 
-void Logger::operator() (const char *format, ...) noexcept
+void Logger::operator() (bool is_flush_now, const char *format, ...) noexcept
 {
-	if (_log_file == nullptr)
+	if (_log_file == nullptr || _current_log_level < _base_log_level)
 	{
 		return;
 	}
@@ -144,17 +163,17 @@ void Logger::operator() (const char *format, ...) noexcept
 		}
 	}
 
-	char *log = new char[_length + pre_log_length]{ '\0' };
+	char *log = new char[_length + _pre_log_length]{ '\0' };
 
 	va_start(_curosr, format);
 	TimePoint time_point = TimePoint::getCurrentTimePoit();
-	size_t restart_index = snprintf(log, _length + pre_log_length, _basic_format[static_cast<int>(_logger_level)],
+	size_t restart_index = snprintf(log, _length + _pre_log_length, _basic_format[static_cast<int>(_current_log_level)],
 		time_point.toString().c_str(), _func.c_str(), _line);
-	restart_index += vsnprintf(log + restart_index, _length + pre_log_length - restart_index, format, _curosr);
+	restart_index += vsnprintf(log + restart_index, _length + _pre_log_length - restart_index, format, _curosr);
 	va_end(_curosr);
 
-	_spin_lock.lock();
-	if (_is_flush_now)
+	_log_file_lock[_log_file_name].first->lock();
+	if (is_flush_now)
 	{
 		fprintf(_log_file, "%s\n", log);
 		delete[]log;
@@ -163,5 +182,5 @@ void Logger::operator() (const char *format, ...) noexcept
 	{
 		_buffer.append(log, restart_index);
 	}
-	_spin_lock.unlock();
+	_log_file_lock[_log_file_name].first->unlock();
 }

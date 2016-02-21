@@ -1,9 +1,11 @@
 #pragma once
-#include <string>
-#include <atomic>
-
 #ifndef __SIMPLE_LOGGER__H_
 #define __SIMPLE_LOGGER__H_
+
+#include <string>
+#include <atomic>
+#include <memory>
+#include <map>
 
 /*
 * simple logger, multithread supported
@@ -11,22 +13,6 @@
 class Logger final
 {
 public:
-	Logger(const std::string file_name);
-
-	Logger(decltype(stdout) out);
-
-	~Logger();
-
-	Logger& debug(bool is_flush_now, const char * func, int line) noexcept;
-
-	Logger& info(bool is_flush_now, const char * func, int line) noexcept;
-
-	Logger& error(bool is_flush_now, const char * func, int line) noexcept;
-
-	void operator() (const char *, ...) noexcept;
-
-private:
-
 	enum class LogLevel : size_t
 	{
 		DEBUG = 0,
@@ -34,19 +20,46 @@ private:
 		ERROR
 	};
 
+public:
+	//init log to a file
+	Logger(const std::string file_name, LogLevel base_level);
+
+	//init log to stdout
+	Logger(LogLevel base_level);
+
+	~Logger();
+
+	Logger& debug(const char * func, int line) noexcept;
+
+	Logger& info(const char * func, int line) noexcept;
+
+	Logger& error(const char * func, int line) noexcept;
+
+	/*
+	* format log infomation, formatting rule is the same with printf
+	* is_flush_now: indicates whether log to a file immediately or log to a buffer then batch log to a file
+	*/
+	void operator() (bool is_flush_now, const char *format, ...) noexcept;
+
+private:
+
+	/*
+	* const variables
+	*/
 	static const char * _basic_format[3];
 
-	FILE* _log_file = nullptr;
+	//length of log header, which describes time ,functon and line of file
+	static const size_t	 _pre_log_length;
 
-	static const size_t	 pre_log_length;	//fix length of log header, which describes time ,functon and line of file
-
+	/*
+	* thread_local variables
+	*/
 	static thread_local std::string _func;
 
 	static thread_local int _line;
 
-	static thread_local LogLevel _logger_level;
+	static thread_local LogLevel _current_log_level;
 
-	static thread_local bool _is_flush_now;	//control weather output to a memert buffer first, false is not
 
 	/*
 	* simple spin lock
@@ -70,7 +83,17 @@ private:
 		std::atomic_flag lck = ATOMIC_FLAG_INIT;
 	};
 
-	static _InnerSpinLock _spin_lock;
+	/*
+	* normal member variables
+	*/
+	std::string _log_file_name;
+
+	FILE* _log_file = nullptr;
+
+	LogLevel _base_log_level = LogLevel::DEBUG;
+
+	//every log flie holds a spin lock. count times of open every log file
+	static std::map<std::string, std::pair<_InnerSpinLock *, std::atomic_int *>> _log_file_lock;
 
 	/*
 	* LogBuffer store log, when reach max couunt or max size
@@ -133,12 +156,9 @@ private:
 };
 
 #ifndef __SIMPLE_LOGGER__
-#define debugNonFlush debug(false, __func__, __LINE__)
-#define debugFlush debug(true, __func__, __LINE__)
-#define infoNonFlush info(false, __func__, __LINE__)
-#define infoFlush info(true, __func__, __LINE__)
-#define errorNonFlush error(false, __func__, __LINE__)
-#define errorFlush error(true, __func__, __LINE__)
+#define debug debug(__func__, __LINE__)
+#define info info(__func__, __LINE__)
+#define error error(__func__, __LINE__)
 #endif
 
 #endif
