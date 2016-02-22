@@ -102,7 +102,7 @@ private:
 	class LogBuffer final
 	{
 	public:
-		LogBuffer(Logger &const logger, size_t size = 8192, size_t count = 128);
+		LogBuffer(Logger &logger, size_t size = 8192, size_t count = 128);
 
 		virtual ~LogBuffer();
 

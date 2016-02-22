@@ -13,7 +13,7 @@ thread_local Logger::LogLevel Logger::_current_log_level = Logger::LogLevel::DEB
 std::map<std::string, std::tuple<FILE*, Logger::_InnerSpinLock *, std::atomic_int *>> Logger::_log_file_lock;
 const size_t Logger::_pre_log_length = 100;
 
-Logger::LogBuffer::LogBuffer(Logger &const logger, size_t size, size_t count) :
+Logger::LogBuffer::LogBuffer(Logger &logger, size_t size, size_t count) :
 	threshold_size(size), threshold_count(count), outer(logger)
 {
 	log_array = new LogRecord[threshold_count];
@@ -54,8 +54,10 @@ void Logger::LogBuffer::flush()
 		log_array[i].clear();
 	}
 	*curse = '\0';
-
-	fprintf(outer._log_file, "%s", buffer);
+	if (outer._log_file != nullptr)
+	{
+		fprintf(outer._log_file, "%s", buffer);
+	}
 
 	current_count = 0;
 	current_size = 0;
@@ -97,12 +99,14 @@ Logger::Logger(LogLevel base_level) : _log_file(stdout), _buffer(*this, 8192, 64
 
 Logger::~Logger()
 {
+	_buffer.flush();
 	std::get<std::atomic_int *>(_log_file_lock[_log_file_name])->operator--(1);
-	if (std::get<std::atomic_int *>(_log_file_lock[_log_file_name]) == 0)
+	if (std::get<std::atomic_int *>(_log_file_lock[_log_file_name])->operator int() == 0)
 	{
 		if (_log_file_name != "stdout")
 		{
 			fclose(_log_file);
+			_log_file = nullptr;
 		}
 		delete std::get<std::atomic_int *>(_log_file_lock[_log_file_name]);
 		delete std::get<_InnerSpinLock *>(_log_file_lock[_log_file_name]);

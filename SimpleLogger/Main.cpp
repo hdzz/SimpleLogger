@@ -26,7 +26,7 @@ void thread_func_Charlotte(Logger &logger, string id)
 {
 	for (int i = 0; i < 50; ++i)
 	{
-		logger.error(false, "this is from thread %s, %s %4d %.2f", id.c_str(), "Charlotte", 520, 13.14F);
+		logger.error(true, "this is from thread %s, %s %4d %.2f", id.c_str(), "Charlotte", 520, 13.14F);
 	}
 }
 
@@ -42,7 +42,7 @@ int main()
 	thread test1(thread_func_love, std::ref(logger_logout), "01");
 	thread test2(thread_func_Charlotte, std::ref(logger), "02");
 	thread test3(thread_func_Charlotte, std::ref(logger1), "03");
-	thread test4(thread_func_Charlotte, std::ref(logger2), "04");
+	thread test4(thread_func_Charlotte, std::ref(logger_stdout), "04");
 	test0.join();
 	test1.join();
 	test2.join();
